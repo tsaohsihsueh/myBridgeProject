@@ -9,10 +9,95 @@
 #include <array>
 #include <sstream>
 #include <fstream>
+#include <stdexcept>
 
 using namespace std;
 
 #include "dll.h"
+
+string  vulner[8] = { "0", "N", "E", "B", "N", "E", "B", "0" };
+int dealernum[8] = { 3, 4, 1, 2, 3, 4, 1, 2 };
+
+// A helper function to split a string by a delimiter.
+// This is useful for separating the hands and the suits.
+std::vector<std::string> split(const std::string& s, char delimiter) {
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream(s);
+    while (std::getline(tokenStream, token, delimiter)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
+/**
+ * @brief Converts a single hand from PBN's dot-separated format to LIN's suit-prefixed format.
+ * @param pbnHand A string representing one hand, e.g., "QJ9875.K74.96.74".
+ * @return A string in LIN format, e.g., "SQJ9875HK74D96C74".
+ */
+std::string convertHandToLinFormat(const std::string& pbnHand) {
+    std::vector<std::string> suits = split(pbnHand, '.');
+    if (suits.size() != 4) {
+        // Handle cases where a hand might be malformed.
+        return "InvalidHand";
+    }
+
+    std::stringstream linHand;
+    linHand << "S" << suits[0] << "H" << suits[1] << "D" << suits[2] << "C" << suits[3];
+    return linHand.str();
+}
+
+/**
+ * @brief Converts a full PBN deal string to a BBO-compatible LIN format string.
+ * @param pbnString The full PBN string, e.g., "N:QJ9875.K74.96.74 62.JT92.AJ43.AT5..."
+ * @return The converted LIN string ready for BBO.
+ */
+std::string pbnToLin(const std::string& pbnString, int index) {
+    // 1. Find the dealer and separate it from the hands
+    size_t colonPos = pbnString.find(':');
+    if (colonPos == std::string::npos || colonPos == 0) {
+        throw std::invalid_argument("Invalid PBN format: Missing or misplaced dealer info.");
+    }
+
+    std::string allHandsStr = pbnString.substr(colonPos + 1);
+
+    // 2. Split the string into four separate hands
+    std::vector<std::string> pbnHands = split(allHandsStr, ' ');
+    // Remove any empty strings that might result from multiple spaces
+    pbnHands.erase(std::remove_if(pbnHands.begin(), pbnHands.end(), [](const std::string& s) {
+        return s.empty();
+        }), pbnHands.end());
+
+    if (pbnHands.size() != 4) {
+        throw std::invalid_argument("Invalid PBN format: Must contain exactly four hands.");
+    }
+
+    // 3. Map PBN hands to players (N, E, S, W) based on the dealer
+    std::map<char, std::string> playerHands;
+    const std::string players = "SNWE";
+
+
+    for (int i = 0; i < 4; ++i) {
+        char currentPlayer = players[i % 4];
+        playerHands[currentPlayer] = pbnHands[i];
+    }
+
+
+    // 5. Build the final LIN string in the required S, W, N, E order
+    std::stringstream linString;
+
+    linString << "qx|o" << to_string(index) << "|md|" << dealernum[index - 1]; // LIN prefix and dealer
+
+    // LIN format requires hands in the order: South, West, North, East
+    linString << convertHandToLinFormat(playerHands['S']) << ",";
+    linString << convertHandToLinFormat(playerHands['W']) << ",";
+    linString << convertHandToLinFormat(playerHands['N']) << ",";
+    linString << convertHandToLinFormat(playerHands['E']);
+
+    linString << "|rh||ah|Board " << index << "|sv|" << vulner[index - 1] << "|pg||"; // LIN suffix
+
+    return linString.str();
+}
 
 bool pbnToDeal(const string& pbn, deal& dl) {
     int player = 0, suit = 3, r;
@@ -479,6 +564,7 @@ public:
             if (hcp >= 13)return true;
             else return false;
         }
+        return true;
     }
 
     std::vector<int> dealintCardsandHCP(const std::string& selectedOpening, int parpoints) {
@@ -765,11 +851,20 @@ public:
             std::cout << " (forcing South to open " << opening << ")";
         }
         std::cout << "...\n";
+
+        ofstream out;
+        out.open("output.lin");
+        if (out.fail()) {
+			cout << "Failed to open output file.\n";
+            exit(1);
+        }
         
-        for (int i = 1; i <= 4; i++) {
+        for (int i = 1; i <= 8; i++) {
             vector<int> inthands = dealintCardsandHCP(opening, parpoints);
             string pbn = convertPBN(inthands);
             solveAll(inthands);
+            std::string linDeal = pbnToLin(pbn, i);
+            out << linDeal << "\n";
         }
     }
 };
@@ -781,9 +876,9 @@ int main() {
     std::cout << "Welcome to Bridge Hand Dealer!\n";
 
     while (true) {
-        cout << "option 1: \n";
-        cout << "option 2: \n";
-        cout << "option 3: \n";
+        cout << "option 1: par\n";
+        cout << "option 2: 1 hand\n";
+        cout << "option 3: 8 hands\n";
         int option;
         cin >> option;
         switch (option) {
