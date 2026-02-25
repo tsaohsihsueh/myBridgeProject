@@ -15,6 +15,8 @@ using namespace std;
 
 #include "dll.h"
 
+int outputcount = 0;
+
 string  vulner[8] = { "0", "N", "E", "B", "N", "E", "B", "0" };
 int dealernum[8] = { 3, 4, 1, 2, 3, 4, 1, 2 };
 
@@ -853,7 +855,8 @@ public:
         std::cout << "...\n";
 
         ofstream out;
-        out.open("output.lin");
+        string outputFilename = "output" + to_string(++outputcount) + ".lin";
+        out.open(outputFilename);
         if (out.fail()) {
 			cout << "Failed to open output file.\n";
             exit(1);
