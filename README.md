@@ -1,4 +1,4 @@
-#✨ Key Features
+✨# Key Features
 
 Custom Hand Generation: Take control of your practice. You can specify exactly which opening bid you want to practice and set your partner’s point range to simulate specific bidding scenarios.
 
