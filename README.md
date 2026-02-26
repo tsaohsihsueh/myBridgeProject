@@ -12,7 +12,7 @@ Instant Evaluation:
 BBO Integration: 
     Generate a set of 8 random hands exported as a .lin file. This file is ready to be uploaded directly to Bridge Base Online (BBO) for practice matches or teaching sessions.
 
-#How to Use
+# How to Use
 
 Select your criteria: Input your desired opening bid and partner's strength.
 
