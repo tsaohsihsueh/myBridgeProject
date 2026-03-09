@@ -5,9 +5,9 @@ Custom Hand Generation:
 
 Instant Evaluation:
 
-    Par Score Calculation: Automatically see the "Par Score" for any given hand, helping you understand the optimal result for both sides.
+Par Score Calculation: Automatically see the "Par Score" for any given hand, helping you understand the optimal result for both sides.
 
-    Hand Analysis: Get an immediate evaluation of single hands to check your counting and logic.
+Hand Analysis: Get an immediate evaluation of single hands to check your counting and logic.
 
 BBO Integration: 
     Generate a set of 8 random hands exported as a .lin file. This file is ready to be uploaded directly to Bridge Base Online (BBO) for practice matches or teaching sessions.
