@@ -21,7 +21,6 @@ string  vulner[8] = { "0", "N", "E", "B", "N", "E", "B", "0" };
 int dealernum[8] = { 3, 4, 1, 2, 3, 4, 1, 2 };
 
 // A helper function to split a string by a delimiter.
-// This is useful for separating the hands and the suits.
 std::vector<std::string> split(const std::string& s, char delimiter) {
     std::vector<std::string> tokens;
     std::string token;
@@ -34,13 +33,10 @@ std::vector<std::string> split(const std::string& s, char delimiter) {
 
 /**
  * @brief Converts a single hand from PBN's dot-separated format to LIN's suit-prefixed format.
- * @param pbnHand A string representing one hand, e.g., "QJ9875.K74.96.74".
- * @return A string in LIN format, e.g., "SQJ9875HK74D96C74".
  */
 std::string convertHandToLinFormat(const std::string& pbnHand) {
     std::vector<std::string> suits = split(pbnHand, '.');
     if (suits.size() != 4) {
-        // Handle cases where a hand might be malformed.
         return "InvalidHand";
     }
 
@@ -51,11 +47,8 @@ std::string convertHandToLinFormat(const std::string& pbnHand) {
 
 /**
  * @brief Converts a full PBN deal string to a BBO-compatible LIN format string.
- * @param pbnString The full PBN string, e.g., "N:QJ9875.K74.96.74 62.JT92.AJ43.AT5..."
- * @return The converted LIN string ready for BBO.
  */
 std::string pbnToLin(const std::string& pbnString, int index) {
-    // 1. Find the dealer and separate it from the hands
     size_t colonPos = pbnString.find(':');
     if (colonPos == std::string::npos || colonPos == 0) {
         throw std::invalid_argument("Invalid PBN format: Missing or misplaced dealer info.");
@@ -63,9 +56,7 @@ std::string pbnToLin(const std::string& pbnString, int index) {
 
     std::string allHandsStr = pbnString.substr(colonPos + 1);
 
-    // 2. Split the string into four separate hands
     std::vector<std::string> pbnHands = split(allHandsStr, ' ');
-    // Remove any empty strings that might result from multiple spaces
     pbnHands.erase(std::remove_if(pbnHands.begin(), pbnHands.end(), [](const std::string& s) {
         return s.empty();
         }), pbnHands.end());
@@ -74,29 +65,23 @@ std::string pbnToLin(const std::string& pbnString, int index) {
         throw std::invalid_argument("Invalid PBN format: Must contain exactly four hands.");
     }
 
-    // 3. Map PBN hands to players (N, E, S, W) based on the dealer
     std::map<char, std::string> playerHands;
     const std::string players = "SNWE";
-
 
     for (int i = 0; i < 4; ++i) {
         char currentPlayer = players[i % 4];
         playerHands[currentPlayer] = pbnHands[i];
     }
 
-
-    // 5. Build the final LIN string in the required S, W, N, E order
     std::stringstream linString;
+    linString << "qx|o" << to_string(index) << "|md|" << dealernum[index - 1];
 
-    linString << "qx|o" << to_string(index) << "|md|" << dealernum[index - 1]; // LIN prefix and dealer
-
-    // LIN format requires hands in the order: South, West, North, East
     linString << convertHandToLinFormat(playerHands['S']) << ",";
     linString << convertHandToLinFormat(playerHands['W']) << ",";
     linString << convertHandToLinFormat(playerHands['N']) << ",";
     linString << convertHandToLinFormat(playerHands['E']);
 
-    linString << "|rh||ah|Board " << index << "|sv|" << vulner[index - 1] << "|pg||"; // LIN suffix
+    linString << "|rh||ah|Board " << index << "|sv|" << vulner[index - 1] << "|pg||";
 
     return linString.str();
 }
@@ -120,11 +105,8 @@ bool pbnToDeal(const string& pbn, deal& dl) {
         }
         if (r >= 2 && r <= 14) {
             dl.remainCards[player][suit] |= (1 << (r));
-            //cout<< player<<" "<<suit<<" "<<r<<'\n';
         }
-
     }
-
     return true;
 }
 
@@ -150,45 +132,58 @@ void printDeal(const deal& dl) {
     }
 }
 
+// FIX: Takes ofstream by reference to avoid opening the file multiple times
+void printDealforOutput(const deal& dl, ofstream& out) {
+    const char* players[] = { "North", "East", "South", "West" };
+    const char* suits[] = { "C", "D", "H", "S" };
+    const char* rankStr = "23456789TJQKA";
+
+    out << '\n';
+    for (int player = 0; player < 4; ++player) {
+        if ((player == 1) || (player == 3))continue;
+        out << players[player] << ":\n";
+        for (int suit = 3; suit >= 0; --suit) {
+            out << "  " << suits[suit] << ": ";
+            unsigned cards = dl.remainCards[player][suit];
+            for (int r = 14; r >= 2; --r) {
+                if (cards & (1 << (r))) {
+                    out << rankStr[r - 2];
+                }
+            }
+            out << endl;
+        }
+    }
+}
+
 string convertPBN(vector<int>& v) {
-    // 點數對照表 (從大到小：A-K-Q-J-T-9-8-7-6-5-4-3-2)
     const char ranks[] = { 'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2' };
 
-    // 四個玩家的牌：每個玩家有4個花色（順序：S, H, D, C）
     std::array<std::array<std::vector<char>, 4>, 4> hands;
 
-    // 分配牌張給四個玩家
     for (int i = 0; i < 52; i++) {
         int card = v[i];
-        int suit = card / 13;  // 0=S, 1=H, 2=D, 3=C
-        int rank = card % 13;  // 0=2, 1=3, ..., 12=A
-
-        int player = i / 13;   // 0=北, 1=東, 2=南, 3=西
-
-        // 將點數轉換為對應的字元
-        char rank_char = ranks[12 - rank]; // 轉換為從A到2的順序
+        int suit = card / 13;
+        int rank = card % 13;
+        int player = i / 13;
+        char rank_char = ranks[12 - rank];
         hands[player][suit].push_back(rank_char);
     }
 
-    // 構建PBN字串
     std::string pbn = "N:";
 
     for (int player = 0; player < 4; player++) {
         if (player > 0) pbn += " ";
 
-        // 按照花色順序：S, H, D, C
         for (int suit = 0; suit < 4; suit++) {
             if (suit > 0) pbn += ".";
 
             if (!hands[player][suit].empty()) {
-                // 對每個花色的牌張按點數從大到小排序
                 std::sort(hands[player][suit].begin(), hands[player][suit].end(),
                     [](char a, char b) {
                         const char order[] = "AKQJT98765432";
                         return std::string(order).find(a) < std::string(order).find(b);
                     });
 
-                // 添加該花色的所有牌張
                 for (char card : hands[player][suit]) {
                     pbn += card;
                 }
@@ -198,7 +193,23 @@ string convertPBN(vector<int>& v) {
 
     return pbn;
 }
-void hcp(vector<int>& v) {
+
+// FIX: Takes ofstream by reference; writes HCP inline without reopening the file
+void hcpforOutput(vector<int>& v, ofstream& out) {
+    int p = 0;
+    int c[13] = { 0,0,0,0,0,0,0,0,0,1,2,3,4 };
+    for (int i = 13; i < 26; i++) {
+        p += c[v[i] % 13];
+    }
+    out << p << " ";
+    p = 0;
+    for (int i = 0; i < 13; i++) {
+        p += c[v[i] % 13];
+    }
+    out << p;
+}
+
+void hcpforConsole(vector<int>& v) {
     int p = 0;
     int c[13] = { 0,0,0,0,0,0,0,0,0,1,2,3,4 };
     for (int i = 13; i < 26; i++) {
@@ -217,9 +228,11 @@ uint32_t get_high_res_time_seed() {
     QueryPerformanceCounter(&counter);
     return static_cast<uint32_t>(counter.QuadPart);
 }
+
 boardsPBN bo;
 solvedBoards solved;
 int res;
+
 void solveAll(vector<int>& v) {
     mt19937 g(get_high_res_time_seed());
     vector<int>h, p;
@@ -234,7 +247,7 @@ void solveAll(vector<int>& v) {
     memset(&dl, 0, sizeof(dl));
     pbnToDeal(convertPBN(p), dl);
     cout << '\n' << "hcp(N S):";
-    hcp(h);
+    hcpforConsole(h);
     printDeal(dl);
 
     int num = 100;
@@ -257,12 +270,9 @@ void solveAll(vector<int>& v) {
             bo.deals[handno].currentTrickRank[1] = 0;
             bo.deals[handno].currentTrickRank[2] = 0;
 
-
             copy(h.begin() + 26, h.begin() + 39, p.begin() + 39);
             copy(h.begin() + 39, h.begin() + 52, p.begin() + 13);
-            // 轉換為PBN格式
             string pbn = convertPBN(p);
-            //cout<<pbn<<'\n';
             shuffle(h.begin() + 26, h.end(), g);
 
             strcpy_s(bo.deals[handno].remainCards, sizeof(bo.deals[handno].remainCards), pbn.c_str());
@@ -288,35 +298,117 @@ void solveAll(vector<int>& v) {
             c[solved.solvedBoard[j].score[0]]++;
         }
         for (int i = 1; i < 14; i++)c[i] += c[i - 1];
-        //cout<<s[i]<<":" << 13-(double)sum/(double)num <<'\n';
         cout << s[i] << ":";
-        //for( int i=0;i<14;i++)cout<<" "<<c[i];
         for (int i = 6; i >= 0; i--)cout << setw(4) << c[i];
         cout << setw(6) << fixed << setprecision(2) << 13 - (double)sum / (double)num << '\n';
     }
+}
 
+// FIX: Opens the file once per hand (trunc for hand 1, app for hands 2-8),
+//      passes the stream to helpers instead of letting them reopen it.
+//      Also restored the "Hand N" label.
+void solveAllforOutput(vector<int>& v, int handcnt) {
+    mt19937 g(get_high_res_time_seed());
+    vector<int>h, p;
+    h.resize(52); p.resize(52);
+    copy(v.begin(), v.end(), h.begin());
+    copy(h.begin(), h.begin() + 13, p.begin() + 26);
+    copy(h.begin() + 13, h.begin() + 26, p.begin());
+
+    copy(h.begin() + 26, h.begin() + 39, p.begin() + 39);
+    copy(h.begin() + 39, h.begin() + 52, p.begin() + 13);
+    deal dl;
+    memset(&dl, 0, sizeof(dl));
+    pbnToDeal(convertPBN(p), dl);
+
+    // FIX: Open file once here; truncate on first hand, append on subsequent hands
+    ofstream out;
+    string outputFilename = "evaluation" + to_string(outputcount) + ".txt";
+    auto mode = (handcnt == 1) ? (std::ios_base::out | std::ios_base::trunc)
+        : (std::ios_base::out | std::ios_base::app);
+    out.open(outputFilename, mode);
+
+    if (out.fail()) {
+        cout << "Failed to open evaluation file.\n";
+        return;
+    }
+
+    // FIX: Restored hand label so output is clearly separated
+    out << "\n--- Hand " << handcnt << " ---\n";
+    out << "hcp(N S): ";
+    // FIX: Pass stream to helper instead of reopening inside it
+    hcpforOutput(h, out);
+    printDealforOutput(dl, out);
+
+    int num = 100;
+    bo.noOfBoards = num;
+
+    out << '\n' << "  ";
+    for (int i = 7; i < 14; i++) out << setw(4) << i;
+    out << '\n';
+
+    for (int i = 0; i < 5; i++) {
+        for (int handno = 0; handno < num; handno++)
+        {
+            bo.deals[handno].trump = i;
+            bo.deals[handno].first = 3;
+
+            bo.deals[handno].currentTrickSuit[0] = 0;
+            bo.deals[handno].currentTrickSuit[1] = 0;
+            bo.deals[handno].currentTrickSuit[2] = 0;
+
+            bo.deals[handno].currentTrickRank[0] = 0;
+            bo.deals[handno].currentTrickRank[1] = 0;
+            bo.deals[handno].currentTrickRank[2] = 0;
+
+            copy(h.begin() + 26, h.begin() + 39, p.begin() + 39);
+            copy(h.begin() + 39, h.begin() + 52, p.begin() + 13);
+            string pbn = convertPBN(p);
+            shuffle(h.begin() + 26, h.end(), g);
+
+            strcpy_s(bo.deals[handno].remainCards, sizeof(bo.deals[handno].remainCards), pbn.c_str());
+
+            bo.target[handno] = -1;
+            bo.solutions[handno] = 3;
+            bo.mode[handno] = 0;
+        }
+
+        res = SolveAllBoards(&bo, &solved);
+
+        if (res != RETURN_NO_FAULT)
+        {
+            printf("DDS error: %d\n", res);
+        }
+
+        char s[5] = { 'S','H','D','C','N' };
+        int c[14];
+        for (int i = 0; i < 14; i++) c[i] = 0;
+        int sum = 0;
+        for (int j = 0; j < num; j++) {
+            sum += solved.solvedBoard[j].score[0];
+            c[solved.solvedBoard[j].score[0]]++;
+        }
+        for (int i = 1; i < 14; i++) c[i] += c[i - 1];
+        out << s[i] << ":";
+        for (int i = 6; i >= 0; i--) out << setw(4) << c[i];
+        out << setw(6) << fixed << setprecision(2) << 13 - (double)sum / (double)num << '\n';
+    }
+    // out closes automatically here (RAII)
 }
 
 void printpar(string pbnDeal) {
-    // Prepare the PBN deal structure
     ddTableDealPBN tableDealPBN;
     strcpy_s(tableDealPBN.cards, sizeof(tableDealPBN.cards), pbnDeal.c_str());
 
-    // Calculate the double-dummy table
     ddTableResults tableResults;
     CalcDDtablePBN(tableDealPBN, &tableResults);
 
-
-
-    // Calculate par score
     parResultsDealer dealerParRes;
-    int dealer = 2;     // North dealer (0=North, 1=East, 2=South, 3=West)
-    int vulnerable = 0; // None vulnerable (0=None, 1=Both, 2=NS only, 3=EW only)
+    int dealer = 2;
+    int vulnerable = 0;
 
     DealerPar(&tableResults, &dealerParRes, dealer, vulnerable);
 
-
-    // Output par score and contracts
     std::cout << "Par Score: " << dealerParRes.score << std::endl;
     std::cout << "Par Contracts: ";
     for (int i = 0; i < dealerParRes.number; i++) {
@@ -325,8 +417,6 @@ void printpar(string pbnDeal) {
     }
     std::cout << "\n";
 }
-
-
 
 struct Card {
     std::string suit;
@@ -368,7 +458,6 @@ private:
         {"A", 4}, {"K", 3}, {"Q", 2}, {"J", 1}
     };
 
-
 public:
     BridgeDealer() : rng(get_high_res_time_seed()) {}
 
@@ -401,12 +490,10 @@ public:
     bool isBalanced(const SuitLengths& lengths) {
         std::vector<int> lens = { lengths.spade, lengths.heart, lengths.diamond, lengths.club };
 
-        // No singletons or voids
         for (int len : lens) {
             if (len < 2) return false;
         }
 
-        // At most one doubleton
         int doubletons = 0;
         for (int len : lens) {
             if (len == 2) doubletons++;
@@ -476,7 +563,7 @@ public:
             return hcp >= 25 && hcp <= 27 && balanced;
         }
 
-        return true; // "any" or unknown opening
+        return true;
     }
 
     std::map<std::string, std::vector<Card>> dealCards(const std::string& selectedOpening) {
@@ -626,7 +713,6 @@ public:
             const std::string& player = playerOrder[playerIdx];
             auto hand = hands.at(player);
 
-            // Sort hand
             std::sort(hand.begin(), hand.end(), [&suitOrder](const Card& a, const Card& b) {
                 auto suitIndexA = std::find(suitOrder.begin(), suitOrder.end(), a.suit) - suitOrder.begin();
                 auto suitIndexB = std::find(suitOrder.begin(), suitOrder.end(), b.suit) - suitOrder.begin();
@@ -634,13 +720,11 @@ public:
                 return a.value > b.value;
                 });
 
-            // Group by suit
             std::map<std::string, std::vector<Card>> groupedBySuit;
             for (const auto& card : hand) {
                 groupedBySuit[card.suit].push_back(card);
             }
 
-            // Convert to PBN format for each suit
             for (size_t suitIdx = 0; suitIdx < suitOrder.size(); ++suitIdx) {
                 if (suitIdx > 0) pbn += ".";
 
@@ -648,12 +732,10 @@ public:
                 if (groupedBySuit.find(suitName) != groupedBySuit.end()) {
                     for (const auto& card : groupedBySuit[suitName]) {
                         std::string rank = card.rank;
-                        // Convert "10" to "T" for PBN format
                         if (rank == "10") rank = "T";
                         pbn += rank;
                     }
                 }
-                // Empty suit is represented by nothing (just the dot separator)
             }
         }
 
@@ -672,7 +754,6 @@ public:
             std::cout << std::setw(10) << std::left << (player + ":") << "\n";
 
             auto hand = hands.at(player);
-            // Sort hand
             std::sort(hand.begin(), hand.end(), [&suitOrder](const Card& a, const Card& b) {
                 auto suitIndexA = std::find(suitOrder.begin(), suitOrder.end(), a.suit) - suitOrder.begin();
                 auto suitIndexB = std::find(suitOrder.begin(), suitOrder.end(), b.suit) - suitOrder.begin();
@@ -680,13 +761,11 @@ public:
                 return a.value > b.value;
                 });
 
-            // Group by suit
             std::map<std::string, std::vector<Card>> groupedBySuit;
             for (const auto& card : hand) {
                 groupedBySuit[card.suit].push_back(card);
             }
 
-            // Display each suit
             for (const auto& suitName : suitOrder) {
                 if (groupedBySuit.find(suitName) != groupedBySuit.end()) {
                     char symbol = suitSymbols[std::find(suits.begin(), suits.end(), suitName) - suits.begin()];
@@ -706,7 +785,6 @@ public:
             std::cout << "\n";
         }
 
-        // Display PBN format
         std::cout << "PBN: " << convertToPBN(hands) << "\n";
     }
 
@@ -741,98 +819,44 @@ public:
     }
 
     void run() {
-
         std::cout << "Force South's opening bid or deal completely random hands.\n";
-
-        
-            deal dl = {};
-            futureTricks fut = {};
-            memset(&dl, 0, sizeof(deal));
-            dl.first = 3;       // 0 = NORTH
-            showOpeningMenu();
-
-            int choice;
-            std::cin >> choice;
-
-            if (choice == -1) {
-                std::cout << "Goodbye!\n";
-                return;
-            }
-
-            std::string opening = getOpeningFromChoice(choice);
-            std::cout << "\nDealing cards";
-            if (opening != "any") {
-                std::cout << " (forcing South to open " << opening << ")";
-            }
-            std::cout << "...\n";
-
-            auto hands = dealCards(opening);
-            if (!hands.empty()) {
-                //displayHands(hands);
-                std::string pbn = convertToPBN(hands);
-                pbnToDeal(pbn, dl);
-                displayHands(hands);
-                printpar(pbn);
-            }
-
-        
-    }
-    void run2() {
-
-        
-        std::cout << "Force South's opening bid or deal completely random hands.\n";
-
-        
-            deal dl = {};
-            //futureTricks fut = {};
-            memset(&dl, 0, sizeof(deal));
-            dl.first = 3;       // 0 = NORTH
-            showOpeningMenu();
-
-            int choice;
-            std::cin >> choice;
-
-            showPartnersHCP();
-            int parpoints;
-            cin >> parpoints;
-
-            if (choice == -1) {
-                std::cout << "Goodbye!\n";
-                return;
-            }
-
-            std::string opening = getOpeningFromChoice(choice);
-            std::cout << "\nDealing cards";
-            if (opening != "any") {
-                std::cout << " (forcing South to open " << opening << ")";
-            }
-            std::cout << "...\n";
-            vector<int> inthands = dealintCardsandHCP(opening, parpoints);
-            //vector<int> inthands = dealintCards(opening);
-            //if (!inthands.empty()) {
-            //    for (int i : inthands) {
-            //        cout << i << " ";
-            //    }
-            //    cout << "\n";
-            //}
-
-            solveAll(inthands);
-
-
-        
-    }
-
-    void run3() {
-
-
-        std::cout << "Force South's opening bid or deal completely random hands.\n";
-
-
 
         deal dl = {};
         futureTricks fut = {};
         memset(&dl, 0, sizeof(deal));
-        dl.first = 3;       // 0 = NORTH
+        dl.first = 3;
+        showOpeningMenu();
+
+        int choice;
+        std::cin >> choice;
+
+        if (choice == -1) {
+            std::cout << "Goodbye!\n";
+            return;
+        }
+
+        std::string opening = getOpeningFromChoice(choice);
+        std::cout << "\nDealing cards";
+        if (opening != "any") {
+            std::cout << " (forcing South to open " << opening << ")";
+        }
+        std::cout << "...\n";
+
+        auto hands = dealCards(opening);
+        if (!hands.empty()) {
+            std::string pbn = convertToPBN(hands);
+            pbnToDeal(pbn, dl);
+            displayHands(hands);
+            printpar(pbn);
+        }
+    }
+
+    void run2() {
+        std::cout << "Force South's opening bid or deal completely random hands.\n";
+
+        deal dl = {};
+        memset(&dl, 0, sizeof(deal));
+        dl.first = 3;
         showOpeningMenu();
 
         int choice;
@@ -854,26 +878,66 @@ public:
         }
         std::cout << "...\n";
 
-        ofstream out;
-        string outputFilename = "output" + to_string(++outputcount) + ".lin";
-        out.open(outputFilename);
-        if (out.fail()) {
-			cout << "Failed to open output file.\n";
-            exit(1);
+        vector<int> inthands = dealintCardsandHCP(opening, parpoints);
+        solveAll(inthands);
+    }
+
+    void run3() {
+        std::cout << "Force South's opening bid or deal completely random hands.\n";
+
+        deal dl = {};
+        futureTricks fut = {};
+        memset(&dl, 0, sizeof(deal));
+        dl.first = 3;
+        showOpeningMenu();
+
+        int choice;
+        std::cin >> choice;
+
+        showPartnersHCP();
+        int parpoints;
+        cin >> parpoints;
+
+        if (choice == -1) {
+            std::cout << "Goodbye!\n";
+            return;
         }
-        
+
+        std::string opening = getOpeningFromChoice(choice);
+        std::cout << "\nDealing cards";
+        if (opening != "any") {
+            std::cout << " (forcing South to open " << opening << ")";
+        }
+        std::cout << "...\n";
+
+        // FIX: Increment outputcount BEFORE generating any files,
+        //      so both the .lin and evaluation .txt share the same index
+        ++outputcount;
+
+        ofstream out;
+        string linFilename = "output" + to_string(outputcount) + ".lin";
+        out.open(linFilename, std::ios_base::trunc); // FIX: trunc so each run3() starts fresh
+
+        if (out.fail()) {
+            cout << "Failed to open output file.\n";
+            return; // FIX: return instead of exit so the program can continue
+        }
+
+        cout << "Generating 8 hands...\n";
         for (int i = 1; i <= 8; i++) {
             vector<int> inthands = dealintCardsandHCP(opening, parpoints);
             string pbn = convertPBN(inthands);
-            solveAll(inthands);
+            // FIX: solveAllforOutput now uses outputcount (already incremented above)
+            //      and handles trunc/app internally based on handcnt
+            solveAllforOutput(inthands, i);
             std::string linDeal = pbnToLin(pbn, i);
             out << linDeal << "\n";
         }
+        // out closes here automatically
     }
 };
 
 int main() {
-
     BridgeDealer dealer;
 
     std::cout << "Welcome to Bridge Hand Dealer!\n";
@@ -885,15 +949,15 @@ int main() {
         int option;
         cin >> option;
         switch (option) {
-            case 1:
-                dealer.run();
-                break;
-            case 2:
-                dealer.run2();
-                break;
-            case 3:
-                dealer.run3();
-                break;
+        case 1:
+            dealer.run();
+            break;
+        case 2:
+            dealer.run2();
+            break;
+        case 3:
+            dealer.run3();
+            break;
         }
 
         std::cout << "\nPress Enter to restart (or enter -1 to quit): ";
@@ -905,7 +969,6 @@ int main() {
             break;
         }
     }
-    
 
     return 0;
 }
