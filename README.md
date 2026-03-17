@@ -5,7 +5,7 @@ Custom Hand Generation:
 
 Instant Evaluation:
 
-Par Score Calculation: Automatically see the "Par Score" for any given hand, helping you understand the optimal result for both sides.
+Par Score Calculation: Automatically see the "Par Score" for a generated hand, helping you understand the optimal result for both sides.
 
 Hand Analysis: Get an immediate evaluation of single hands to check your counting and logic.
 
