@@ -816,6 +816,7 @@ public:
         cout << "1: 0-5\n";
         cout << "2: 6-12\n";
         cout << "3: 13+\n";
+        cout << "Enter choice (0-3): ";
     }
 
     void run() {
